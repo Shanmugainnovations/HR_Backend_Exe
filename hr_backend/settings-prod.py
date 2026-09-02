@@ -129,7 +129,21 @@ USE_L10N = True
 
 USE_TZ = True
 
-CORS_ALLOW_ALL_ORIGINS = True   # adjust for production
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'authorization',
+    'content-type',
+    'x-user-role',
+    'x-device-id',
+    'x-employee-id',
+    'branch-code',
+    'auth-user-id',
+    'auth-branch-code',
+]
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
 
