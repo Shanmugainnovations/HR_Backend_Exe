@@ -397,26 +397,21 @@ def ip_login(request):
                 status=400
             )
 
-        # 1️⃣ CHECK ALLOWED DEVICE VIA DJANGO ORM
-        device_obj = AllowedDevice.objects.filter(
-            fingerprint=client_fingerprint,
-            is_active=True
-        ).first()
+        # 1️⃣ CHECK ALLOWED DEVICE (Direct Mongo Query)
+        mongo_uri = os.getenv("GLOBAL_DB_HOST")
+        client = MongoClient(mongo_uri)
+        db_name = os.environ.get('GLOBAL_DB_NAME', os.environ.get('HR_DB_NAME', 'Global'))
 
-        # Fallback to PyMongo if needed
-        if not device_obj:
+        device_obj = None
+        for target_db in [db_name, 'Global', 'HR']:
             try:
-                mongo_uri = os.getenv("GLOBAL_DB_HOST")
-                db_name = os.environ.get('GLOBAL_DB_NAME', os.environ.get('HR_DB_NAME', 'Global'))
-                client = MongoClient(mongo_uri)
-                for test_db in [db_name, 'Global', 'HR']:
-                    doc = client[test_db]["employees_alloweddevice"].find_one({
-                        "fingerprint": client_fingerprint,
-                        "is_active": True
-                    })
-                    if doc:
-                        device_obj = doc
-                        break
+                doc = client[target_db]["employees_alloweddevice"].find_one({
+                    "fingerprint": client_fingerprint,
+                    "is_active": True
+                })
+                if doc:
+                    device_obj = doc
+                    break
             except Exception:
                 pass
 
@@ -425,13 +420,8 @@ def ip_login(request):
                 "error": f"Fingerprint '{client_fingerprint[:8]}...' is not authorized. Register this terminal first."
             }, status=403)
 
-        if isinstance(device_obj, dict):
-            device_name = device_obj.get('label') or "KIOSK"
-            kiosk_type = device_obj.get('kiosk_type') or 'attendance'
-        else:
-            device_name = device_obj.label or "KIOSK"
-            kiosk_type = getattr(device_obj, 'kiosk_type', 'attendance') or 'attendance'
-
+        device_name = device_obj.get('label') or "KIOSK"
+        kiosk_type = device_obj.get('kiosk_type') or 'attendance'
         token_env_key = f"{device_name}_TOKEN"
         token = os.getenv(token_env_key, "kiosk-generic-token")
 
