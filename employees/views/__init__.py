@@ -63,4 +63,4 @@ from .canteen_management.canteen import (
     get_canteen_token_history,
     manage_canteen_rules
 )
-from .common.utils import save_or_update_encoding, api_health_check
+from .common.utils import save_or_update_encoding
