@@ -63,18 +63,3 @@ def to_list(encoding):
     if isinstance(encoding, str):
         return ast.literal_eval(encoding)
     return encoding
-
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-
-@api_view(['GET', 'POST', 'HEAD', 'OPTIONS'])
-@permission_classes([AllowAny])
-def api_health_check(request):
-    return Response({
-        "status": "FaceHR Backend API Active",
-        "service": "Shanmuga FaceHR Kiosk",
-        "version": "1.0.0"
-    })
-
