@@ -119,20 +119,35 @@ def _match_face(enc):
 
 def _get_device_label(request):
     """Internal helper to identify the device label using fingerprint."""
-    fingerprint = request.headers.get('X-Device-Id') or request.data.get('fingerprint')
+    fingerprint = (
+        request.headers.get('X-Device-Id') or 
+        request.headers.get('x-device-id') or 
+        request.META.get('HTTP_X_DEVICE_ID') or 
+        request.data.get('fingerprint') or 
+        request.data.get('deviceId')
+    )
     if not fingerprint:
         return "unknown_device"
     
     try:
         client = get_mongo_client()
         if not client: return "unknown_device"
-        db_name = os.environ.get('HR_DB_NAME', 'HR')
-        db = client[db_name]
-        allowed_devices_col = db['employees_alloweddevice']
+        db_name = os.environ.get('GLOBAL_DB_NAME', os.environ.get('HR_DB_NAME', 'Global'))
         
-        device_doc = allowed_devices_col.find_one({"fingerprint": fingerprint})
-        if device_doc:
-            return device_doc.get("label") or "Registered Device"
+        for target_db in [db_name, 'Global', 'HR']:
+            try:
+                device_doc = client[target_db]['employees_alloweddevice'].find_one({
+                    "fingerprint": str(fingerprint).strip(),
+                    "is_active": True
+                })
+                if not device_doc:
+                    device_doc = client[target_db]['employees_alloweddevice'].find_one({
+                        "fingerprint": str(fingerprint).strip()
+                    })
+                if device_doc:
+                    return device_doc.get("label") or "Registered Device"
+            except Exception:
+                pass
     except Exception as e:
         print(f"🚨 DEBUG: Error identifying device: {e}")
         
