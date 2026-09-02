@@ -385,57 +385,56 @@ def login(request):
 @api_view(['POST'])
 def ip_login(request):
     """
-    Fingerprint-based Login (FingerprintJS visitor ID only).
+    Fingerprint-based Login (FingerprintJS visitor ID).
     """
-    from employees.views.attendance_management.ip_guard import get_client_ip
-
     try:
-        # 🔹 Mongo connection
-        mongo_uri = os.getenv("GLOBAL_DB_HOST")
-        db_name = os.environ.get('HR_DB_NAME', 'HR')
-        client = MongoClient(mongo_uri)
-        db = client[db_name]
+        from employees.models import AllowedDevice
 
-        # Use correct Django-prefixed collection names
-        allowed_devices_col = db["employees_alloweddevice"]
-        register_col = db["employees_register"]
-
-        # 🔹 Get client details
         client_fingerprint = request.data.get("fingerprint")
-
         if not client_fingerprint:
             return Response(
                 {"error": "Fingerprint ID missing"},
                 status=400
             )
 
-        # ============================================================
-        # 1️⃣ CHECK ALLOWED DEVICE (WHITELIST)
-        # ============================================================
-        device_obj = allowed_devices_col.find_one({
-            "fingerprint": client_fingerprint,
-            "is_active": True
-        })
+        # 1️⃣ CHECK ALLOWED DEVICE VIA DJANGO ORM
+        device_obj = AllowedDevice.objects.filter(
+            fingerprint=client_fingerprint,
+            is_active=True
+        ).first()
+
+        # Fallback to PyMongo if needed
+        if not device_obj:
+            try:
+                mongo_uri = os.getenv("GLOBAL_DB_HOST")
+                db_name = os.environ.get('GLOBAL_DB_NAME', os.environ.get('HR_DB_NAME', 'Global'))
+                client = MongoClient(mongo_uri)
+                for test_db in [db_name, 'Global', 'HR']:
+                    doc = client[test_db]["employees_alloweddevice"].find_one({
+                        "fingerprint": client_fingerprint,
+                        "is_active": True
+                    })
+                    if doc:
+                        device_obj = doc
+                        break
+            except Exception:
+                pass
 
         if not device_obj:
             return Response({
                 "error": f"Fingerprint '{client_fingerprint[:8]}...' is not authorized. Register this terminal first."
             }, status=403)
 
-        # ============================================================
-        # 2️⃣ GENERIC KIOSK LOGIN (NO USER LINK REQUIRED)
-        # ============================================================
-        # As per user request: "any user not link on this ok"
-        # We grant access as a generic Kiosk entity.
-        
-        device_name = device_obj.get('label') or "KIOSK"
-        kiosk_type = device_obj.get('kiosk_type') or 'attendance'
+        if isinstance(device_obj, dict):
+            device_name = device_obj.get('label') or "KIOSK"
+            kiosk_type = device_obj.get('kiosk_type') or 'attendance'
+        else:
+            device_name = device_obj.label or "KIOSK"
+            kiosk_type = getattr(device_obj, 'kiosk_type', 'attendance') or 'attendance'
+
         token_env_key = f"{device_name}_TOKEN"
         token = os.getenv(token_env_key, "kiosk-generic-token")
 
-        # ============================================================
-        # 3️⃣ RESPONSE (Role reflects which kiosk this device is registered for)
-        # ============================================================
         return Response({
             "success": True,
             "message": f"Kiosk Access Granted: {device_name}",
